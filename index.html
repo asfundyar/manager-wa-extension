@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>WhatsApp Extension</title>
+<style>
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+    margin: 0;
+    padding: 10px;
+    display: flex;
+    justify-content: center;
+  }
+  .wa-btn {
+    background-color: #25D366;
+    color: white;
+    font-weight: bold;
+    padding: 8px 16px;
+    border-radius: 5px;
+    text-decoration: none;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 14px;
+    border: none;
+    cursor: pointer;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+  }
+  .wa-btn:hover {
+    background-color: #1da851;
+  }
+</style>
+</head>
+<body>
+
+  <!-- This button will grab the data from Manager.io and open WhatsApp -->
+  <button class="wa-btn" onclick="sendToWhatsApp()">
+    <svg width="16" height="16" fill="currentColor" viewBox="0 0 24 24"><path d="M12.012 2c-5.506 0-9.989 4.478-9.99 9.984 0 1.762.459 3.48 1.333 5.001l-1.416 5.171 5.291-1.387c1.467.8 3.117 1.222 4.78 1.223h.004c5.505 0 9.988-4.478 9.989-9.985 0-2.667-1.037-5.176-2.925-7.062-1.887-1.886-4.398-2.924-7.066-2.925zm0 1.992c4.408 0 7.99 3.582 7.991 7.99 0 2.135-.83 4.141-2.339 5.651-1.509 1.509-3.516 2.34-5.652 2.34h-.003c-1.42 0-2.812-.37-4.032-1.071l-.289-.167-2.992.784.798-2.918-.184-.294c-.77-1.228-1.178-2.648-1.178-4.102 0-4.408 3.582-7.99 7.99-7.99z"/></svg>
+    Send via WhatsApp
+  </button>
+
+  <script>
+    function sendToWhatsApp() {
+      // 1. Get the current invoice URL from the parent window
+      const invoiceUrl = document.referrer; 
+      
+      // 2. Fetch the data for this specific invoice from Manager.io's API
+      fetch('/api4/view-v1' + window.parent.location.search, {
+        headers: { 'Accept': 'application/json' }
+      })
+      .then(response => response.json())
+      .then(data => {
+        // 3. Extract the phone number and format it
+        let phone = data.recipient?.phone || '';
+        let cleanPhone = phone.replace(/[^0-9]/g, '');
+        
+        if (!cleanPhone) {
+          alert("No phone number found for this customer.");
+          return;
+        }
+
+        // 4. Create the custom message using your company name
+        const clientName = data.recipient?.name || 'Valued Customer';
+        const invRef = data.reference || 'N/A';
+        const textMessage = `Hello ${clientName},\n\nPlease find your payment summary for Invoice #${invRef}.\n\nYou can view your document online here: ${invoiceUrl}\n\nThank you,\nVals Tracking (Pvt) Ltd`;
+
+        // 5. Open WhatsApp Web/Desktop
+        const waUrl = `https://wa.me/${cleanPhone}?text=${encodeURIComponent(textMessage)}`;
+        window.open(waUrl, '_blank');
+      })
+      .catch(err => {
+        console.error('Error fetching invoice data:', err);
+        alert("Could not load invoice data.");
+      });
+    }
+  </script>
+</body>
+</html>
