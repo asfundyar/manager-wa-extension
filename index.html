@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>WhatsApp Invoice</title>
+  <link rel="stylesheet" href="styles.css">
+  <script src="app.js" defer></script>
+</head>
+<body>
+  <main class="app-shell">
+    <header class="app-header no-print">
+      <div class="brand-mark" aria-hidden="true">WA</div>
+      <div>
+        <h1>WhatsApp Invoice</h1>
+        <p>Manager.io invoice preview aur WhatsApp message</p>
+      </div>
+    </header>
+
+    <section id="statusCard" class="status-card no-print" aria-live="polite">
+      <span id="statusDot" class="status-dot loading"></span>
+      <div>
+        <strong id="statusTitle">Invoice load ho rahi hai…</strong>
+        <p id="statusText">Manager.io se current invoice context hasil kiya ja raha hai.</p>
+      </div>
+    </section>
+
+    <section id="controls" class="controls-card no-print" hidden>
+      <div class="control-grid">
+        <label>
+          <span>Customer WhatsApp Number</span>
+          <input id="phoneInput" type="tel" inputmode="tel" autocomplete="tel"
+                 placeholder="923001234567">
+          <small id="phoneHint">Format: 92XXXXXXXXXX</small>
+        </label>
+
+        <label class="message-field">
+          <span>WhatsApp Message</span>
+          <textarea id="messageInput" rows="8"></textarea>
+        </label>
+      </div>
+
+      <div class="button-row">
+        <button id="whatsappButton" class="btn btn-whatsapp" type="button">
+          Open WhatsApp
+        </button>
+        <button id="copyButton" class="btn btn-secondary" type="button">
+          Copy Message
+        </button>
+        <button id="printButton" class="btn btn-secondary" type="button">
+          Print / Save PDF
+        </button>
+        <button id="reloadButton" class="btn btn-ghost" type="button">
+          Reload Invoice
+        </button>
+      </div>
+
+      <p class="notice">
+        Normal WhatsApp link PDF ko automatically attach nahi karta. “Print / Save PDF” se invoice PDF save karein,
+        phir WhatsApp chat mein manually attach karein.
+      </p>
+    </section>
+
+    <section id="invoicePreview" class="invoice-paper" hidden aria-label="Invoice preview">
+      <div class="invoice-top">
+        <div>
+          <p class="eyebrow">SALES INVOICE</p>
+          <h2 id="businessName">Business Name</h2>
+          <p id="businessAddress" class="multiline muted"></p>
+        </div>
+        <div class="invoice-title-block">
+          <span>Invoice</span>
+          <strong id="invoiceReference">—</strong>
+        </div>
+      </div>
+
+      <div class="party-grid">
+        <div class="party-card">
+          <span class="section-label">BILL TO</span>
+          <strong id="customerName">—</strong>
+          <p id="customerAddress" class="multiline muted"></p>
+          <p id="customerEmail" class="muted"></p>
+        </div>
+        <div id="invoiceFields" class="fields-card"></div>
+      </div>
+
+      <p id="invoiceDescription" class="invoice-description" hidden></p>
+
+      <div class="table-wrap">
+        <table id="invoiceTable">
+          <thead id="invoiceTableHead"></thead>
+          <tbody id="invoiceTableBody"></tbody>
+          <tfoot id="invoiceTableFoot"></tfoot>
+        </table>
+      </div>
+
+      <div class="invoice-footer">
+        <p>Generated from Manager.io for WhatsApp sharing.</p>
+      </div>
+    </section>
+
+    <section id="errorCard" class="error-card no-print" hidden>
+      <h2>Invoice load nahi ho saki</h2>
+      <p id="errorText"></p>
+      <button id="errorRetryButton" class="btn btn-secondary" type="button">Try Again</button>
+    </section>
+  </main>
+</body>
+</html>
