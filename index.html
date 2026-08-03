@@ -146,6 +146,942 @@
       cursor: pointer;
       text-decoration: underline;
     }
+
+    .manual-phone {
+      margin: 16px 0 14px;
+    }
+    .manual-phone label {
+      display: block;
+      margin-bottom: 7px;
+      font-size: 13px;
+      font-weight: 600;
+      color: #334155;
+    }
+    .manual-phone input {
+      width: 100%;
+      padding: 12px 14px;
+      border: 1px solid #cbd5e1;
+      border-radius: 10px;
+      font-size: 15px;
+      outline: none;
+      transition: border-color .2s, box-shadow .2s;
+    }
+    .manual-phone input:focus {
+      border-color: #25D366;
+      box-shadow: 0 0 0 3px rgba(37, 211, 102, .14);
+    }
+    .manual-phone small {
+      display: block;
+      margin-top: 6px;
+      color: #64748b;
+      font-size: 12px;
+      line-height: 1.4;
+    }
+
+    @media (max-width: 480px) {
+      .card { padding: 24px 20px 28px; }
+      .card-header h2 { font-size: 19px; }
+    }
+  </style>
+</head>
+<body>
+<div class="card">
+  <div class="card-header">
+    <svg width="28" height="28" viewBox="0 0 24 24" fill="none">
+      <path d="M12.012 2C6.506 2 2.023 6.478 2.022 11.984c0 1.762.459 3.48 1.333 5.001l-1.416 5.171 5.291-1.387c1.467.8 3.117 1.222 4.78 1.223h.004c5.505 0 9.988-4.478 9.989-9.985 0-2.667-1.037-5.176-2.925-7.062C17.1 3.039 14.59 2.001 11.923 2h.089z" fill="#25D366"/>
+      <path d="M17.2 14.3c-.3-.15-1.7-.85-2-.95-.3-.1-.5-.15-.7.15-.2.3-.8.95-1 1.15-.2.2-.4.25-.7.1-.3-.15-1.3-.5-2.5-1.55-.9-.8-1.5-1.8-1.7-2.1-.2-.3-.02-.45.15-.6.15-.15.35-.4.5-.6.15-.2.2-.35.3-.6.1-.25.05-.45-.02-.65-.07-.2-.7-1.65-.95-2.25-.25-.6-.5-.5-.7-.5-.2 0-.4-.05-.6-.05-.2 0-.55.1-.85.45-.3.35-1.1 1.1-1.1 2.65s1.15 3.1 1.3 3.3c.15.2 2.25 3.45 5.45 4.65 2.55.95 3.3.8 3.9.75.6-.05 1.9-.75 2.15-1.5.25-.75.25-1.4.15-1.55-.1-.15-.3-.25-.6-.4z" fill="#fff"/>
+    </svg>
+    <h2>WhatsApp Send</h2>
+    <span class="badge">Manager.io</span>
+  </div>
+  <p class="desc">
+    <strong>Auto‑detects</strong> invoice &amp; customer from the page. Click to send a complete summary via WhatsApp.
+  </p>
+
+  <div class="manual-phone">
+    <label for="manualPhone">Customer WhatsApp Number</label>
+    <input id="manualPhone" type="tel" inputmode="tel" autocomplete="tel"
+           placeholder="Auto-detect, or enter 03XXXXXXXXX / +92XXXXXXXXXX">
+    <small>Auto-detected number yahan show hoga. Agar page number expose na kare to manually enter kar dein.</small>
+  </div>
+  <button class="wa-btn" id="sendBtn">
+    <svg width="20" height="20" fill="currentColor" viewBox="0 0 24 24">
+      <path d="M12.012 2c-5.506 0-9.989 4.478-9.99 9.984 0 1.762.459 3.48 1.333 5.001l-1.416 5.171 5.291-1.387c1.467.8 3.117 1.222 4.78 1.223h.004c5.505 0 9.988-4.478 9.989-9.985 0-2.667-1.037-5.176-2.925-7.062-1.887-1.886-4.398-2.924-7.066-2.925zm0 1.992c4.408 0 7.99 3.582 7.991 7.99 0 2.135-.83 4.141-2.339 5.651-1.509 1.509-3.516 2.34-5.652 2.34h-.003c-1.42 0-2.812-.37-4.032-1.071l-.289-.167-2.992.784.798-2.918-.184-.294c-.77-1.228-1.178-2.648-1.178-4.102 0-4.408 3.582-7.99 7.99-7.99z"/>
+    </svg>
+    <span id="btnLabel">Send via WhatsApp</span>
+  </button>
+  <div class="status" id="status"><span id="statusText">🔵 Ready</span></div>
+  <div class="meta">
+    <span><span class="dot" id="statusDot"></span><span id="connectionStatus">Checking page…</span></span>
+    <span id="invoiceRef">Invoice: —</span>
+  </div>
+
+  <!-- Debug Toggle & Panel -->
+  <div class="debug-toggle" id="debugToggle">🔍 Show detected data</div>
+  <div id="debugPanel"></div>
+</div>
+
+<script>
+(function() {
+  'use strict';
+
+  const sendBtn = document.getElementById('sendBtn');
+  const btnLabel = document.getElementById('btnLabel');
+  const statusEl = document.getElementById('status');
+  const statusText = document.getElementById('statusText');
+  const statusDot = document.getElementById('statusDot');
+  const connectionStatus = document.getElementById('connectionStatus');
+  const invoiceRefEl = document.getElementById('invoiceRef');
+  const debugPanel = document.getElementById('debugPanel');
+  const debugToggle = document.getElementById('debugToggle');
+  const manualPhoneInput = document.getElementById('manualPhone');
+
+  let isLoading = false;
+  let extractedData = null;
+  let lastDebugInfo = '';
+
+  // Helper: set status
+  function setStatus(msg, type) {
+    statusText.textContent = msg;
+    statusEl.className = 'status';
+    if (type) statusEl.classList.add(type);
+  }
+
+  function setLoading(loading) {
+    isLoading = loading;
+    sendBtn.disabled = loading;
+    if (loading) {
+      btnLabel.innerHTML = '<span class="spinner"></span> Loading…';
+    } else {
+      btnLabel.textContent = 'Send via WhatsApp';
+    }
+  }
+
+  function updateMeta(phone, reference) {
+    if (phone) {
+      const clean = phone.replace(/[^0-9]/g, '');
+      connectionStatus.textContent = `📱 ${clean.slice(0,4)}••••${clean.slice(-2)}`;
+      statusDot.className = 'dot';
+    } else {
+      connectionStatus.textContent = '⚠️ No phone found';
+      statusDot.className = 'dot inactive';
+    }
+    invoiceRefEl.textContent = reference ? `Invoice: #${reference}` : 'Invoice: —';
+  }
+
+  // Show debug info
+  function showDebug(info) {
+    lastDebugInfo = info;
+    if (debugPanel.classList.contains('show')) {
+      debugPanel.textContent = info;
+    }
+  }
+
+  debugToggle.addEventListener('click', function() {
+    debugPanel.classList.toggle('show');
+    if (debugPanel.classList.contains('show')) {
+      debugPanel.textContent = lastDebugInfo || 'No debug info yet. Click "Send" to scan.';
+    }
+  });
+
+  // ---------- ACCESSIBLE PAGE / IFRAME SCANNER ----------
+  function getAccessibleSources() {
+    const sources = [];
+    const seenDocs = new Set();
+
+    function addWindow(win, label) {
+      if (!win) return;
+      try {
+        const doc = win.document;
+        if (!doc || seenDocs.has(doc)) return;
+        // Accessing body/location can throw on a cross-origin window.
+        void doc.body;
+        const url = win.location.href;
+        seenDocs.add(doc);
+        sources.push({ label, win, doc, url });
+      } catch (_) {
+        // Cross-origin frame/window: browser security prevents DOM access.
+      }
+    }
+
+    addWindow(window, 'widget/current document');
+    if (window.parent && window.parent !== window) addWindow(window.parent, 'parent document');
+    if (window.top && window.top !== window && window.top !== window.parent) addWindow(window.top, 'top document');
+    if (window.opener && !window.opener.closed) addWindow(window.opener, 'opener document');
+
+    // Also inspect same-origin frames inside every accessible document.
+    for (let i = 0; i < sources.length; i++) {
+      const source = sources[i];
+      try {
+        const frames = source.doc.querySelectorAll('iframe, frame');
+        frames.forEach((frame, idx) => addWindow(frame.contentWindow, `${source.label} frame ${idx + 1}`));
+      } catch (_) { /* ignore */ }
+    }
+
+    return sources;
+  }
+
+  function getInvoicePageUrl() {
+    const sources = getAccessibleSources();
+    // Prefer a URL outside this widget, because that is normally the actual invoice page.
+    const external = sources.find(s => s.win !== window && s.url && s.url !== 'about:blank');
+    return external?.url || window.location.href;
+  }
+
+  function normalizePhoneForWhatsApp(value) {
+    let digits = String(value || '').replace(/\D/g, '');
+    if (!digits) return '';
+
+    if (digits.startsWith('0092')) digits = digits.slice(2); // 00923... -> 923...
+    if (/^03\d{9}$/.test(digits)) digits = '92' + digits.slice(1); // 03... -> 923...
+    else if (/^3\d{9}$/.test(digits)) digits = '92' + digits;      // 3...  -> 923...
+
+    return digits;
+  }
+
+  function isValidWhatsAppPhone(value) {
+    const digits = normalizePhoneForWhatsApp(value);
+    return /^\d{10,15}$/.test(digits);
+  }
+
+  function scorePhoneCandidate(raw, context, sourceType) {
+    const digits = String(raw || '').replace(/\D/g, '');
+    const ctx = String(context || '').toLowerCase();
+    let score = 0;
+
+    if (/^03\d{9}$/.test(digits)) score += 260;
+    if (/^923\d{9}$/.test(digits)) score += 270;
+    if (/^92\d{10}$/.test(digits)) score += 230;
+    if (/^3\d{9}$/.test(digits)) score += 220;
+    if (digits.length >= 10 && digits.length <= 13) score += 70;
+    if (/(phone|mobile|cell|whatsapp|contact|primary contact)/i.test(ctx)) score += 160;
+    if (sourceType === 'tel-link') score += 220;
+    if (sourceType === 'input') score += 180;
+    if (/(invoice|reference|ref\s*#|amount|total|date|cnic|ntn|iban|account)/i.test(ctx) &&
+        !/(phone|mobile|cell|whatsapp|contact)/i.test(ctx)) score -= 150;
+    if (digits.length < 7 || digits.length > 15) score -= 500;
+
+    return score;
+  }
+
+  function extractPhoneFromDocument(doc, sourceLabel, debugLines) {
+    const candidates = [];
+
+    function addCandidate(value, context, type) {
+      if (!value) return;
+      const matches = String(value).match(/(?:\+?92|0092|0)?3\d{2}[\s().-]*\d{3}[\s.-]*\d{4}|\+?\d[\d\s().-]{8,18}\d/g);
+      if (!matches) return;
+      for (const match of matches) {
+        const digits = match.replace(/\D/g, '');
+        if (digits.length < 7 || digits.length > 15) continue;
+        candidates.push({
+          raw: match.trim(),
+          context: String(context || '').trim(),
+          type,
+          score: scorePhoneCandidate(match, context, type),
+          sourceLabel
+        });
+      }
+    }
+
+    // Strongest source: tel: hyperlinks.
+    try {
+      doc.querySelectorAll('a[href^="tel:"]').forEach(el => {
+        addCandidate(el.getAttribute('href').replace(/^tel:/i, ''), el.textContent || el.outerHTML, 'tel-link');
+      });
+    } catch (_) { /* ignore */ }
+
+    // Inputs, data attributes, IDs/classes and common customer/contact fields.
+    const selectors = [
+      '[data-testid*="phone" i]', '[data-testid*="mobile" i]',
+      '[data-phone]', '[data-mobile]', '[data-whatsapp]',
+      'input[type="tel"]', 'input[name*="phone" i]', 'input[name*="mobile" i]',
+      'input[id*="phone" i]', 'input[id*="mobile" i]',
+      '[class*="phone" i]', '[class*="mobile" i]', '[class*="whatsapp" i]',
+      '[id*="phone" i]', '[id*="mobile" i]'
+    ];
+
+    for (const selector of selectors) {
+      try {
+        doc.querySelectorAll(selector).forEach(el => {
+          const values = [
+            el.value,
+            el.textContent,
+            el.getAttribute?.('data-phone'),
+            el.getAttribute?.('data-mobile'),
+            el.getAttribute?.('data-whatsapp'),
+            el.getAttribute?.('title'),
+            el.getAttribute?.('aria-label'),
+            el.getAttribute?.('placeholder')
+          ];
+          const context = [el.id, el.className, el.name, el.getAttribute?.('aria-label'), el.closest?.('tr')?.innerText]
+            .filter(Boolean).join(' | ');
+          values.forEach(value => addCandidate(value, context, 'input'));
+        });
+      } catch (_) { /* unsupported selector or inaccessible node */ }
+    }
+
+    // Search text around phone labels first.
+    const bodyText = doc.body?.innerText || doc.documentElement?.innerText || '';
+    const lines = bodyText.split(/\r?\n/).map(s => s.trim()).filter(Boolean);
+    const phoneLabel = /(primary\s+contact|contact\s*(?:#|number|no\.?|phone)?|phone|mobile|cell|whatsapp)/i;
+
+    for (let i = 0; i < lines.length; i++) {
+      if (!phoneLabel.test(lines[i])) continue;
+      const nearby = lines.slice(Math.max(0, i - 1), Math.min(lines.length, i + 4)).join(' | ');
+      addCandidate(nearby, nearby, 'label-text');
+    }
+
+    // Last resort: all visible text.
+    addCandidate(bodyText, bodyText.slice(0, 500), 'page-text');
+
+    // Embedded JSON often contains customer.mobile/customer.phone even when not rendered.
+    try {
+      doc.querySelectorAll('script[type="application/json"], script:not([src])').forEach(script => {
+        const scriptText = script.textContent || '';
+        if (/(phone|mobile|whatsapp|contact)/i.test(scriptText)) {
+          addCandidate(scriptText, 'embedded JSON/script phone field', 'json');
+        }
+      });
+    } catch (_) { /* ignore */ }
+
+    candidates.sort((a, b) => b.score - a.score);
+    const best = candidates.find(c => c.score > 0 && isValidWhatsAppPhone(c.raw));
+
+    if (best) {
+      debugLines.push(`Phone found in ${sourceLabel}: "${best.raw}" (${best.type}, score ${best.score})`);
+      debugLines.push(`Phone context: ${best.context.slice(0, 240)}`);
+      return best.raw;
+    }
+
+    debugLines.push(`No reliable phone found in ${sourceLabel}. Candidates checked: ${candidates.length}`);
+    return '';
+  }
+
+  function getCombinedText(sources) {
+    const chunks = [];
+    for (const source of sources) {
+      try {
+        const text = source.doc.body?.innerText || source.doc.documentElement?.innerText || '';
+        if (text) chunks.push({ label: source.label, text });
+      } catch (_) { /* ignore */ }
+    }
+    return chunks;
+  }
+
+  function findValueNearLabels(lines, labels, valueMatcher) {
+    for (let i = 0; i < lines.length; i++) {
+      const lower = lines[i].toLowerCase();
+      if (!labels.some(label => lower.includes(label))) continue;
+      for (let offset = 0; offset <= 3; offset++) {
+        const candidate = lines[i + offset];
+        if (!candidate) continue;
+        const value = valueMatcher(candidate, lines[i]);
+        if (value) return value;
+      }
+    }
+    return null;
+  }
+
+  function scanPageForInvoiceData() {
+    const data = {};
+    const debugLines = ['=== Multi-document scan started ==='];
+    const sources = getAccessibleSources();
+    debugLines.push(`Accessible documents: ${sources.map(s => s.label).join(', ') || 'none'}`);
+
+    // Manual entry always has priority.
+    const manualPhone = manualPhoneInput?.value?.trim() || '';
+    let phone = manualPhone && isValidWhatsAppPhone(manualPhone) ? manualPhone : '';
+    if (phone) debugLines.push(`Using manual phone: "${phone}"`);
+
+    if (!phone) {
+      // Prefer invoice/parent/opener documents over the widget itself.
+      const ordered = [...sources].sort((a, b) => Number(a.win === window) - Number(b.win === window));
+      for (const source of ordered) {
+        phone = extractPhoneFromDocument(source.doc, source.label, debugLines);
+        if (phone) break;
+      }
+    }
+
+    data.phone = phone || '';
+    if (phone && manualPhoneInput && !manualPhoneInput.value.trim()) {
+      manualPhoneInput.value = phone;
+    }
+
+    const textChunks = getCombinedText(sources);
+    const allLines = textChunks.flatMap(chunk => chunk.text.split(/\r?\n/).map(s => s.trim()).filter(Boolean));
+    const allText = textChunks.map(chunk => chunk.text).join('\n');
+
+    // ---------- Customer name ----------
+    let name = findValueNearLabels(
+      allLines,
+      ['primary contact person', 'contact person', 'customer name', 'client name', 'bill to', 'ship to'],
+      (candidate, labelLine) => {
+        let value = candidate;
+        if (candidate === labelLine) {
+          value = candidate.replace(/^(?:primary contact person|contact person|customer name|client name|bill to|ship to)\s*[:#-]?\s*/i, '');
+        }
+        value = value.replace(/^(mr|ms|mrs|dr)\.?\s*/i, '').trim();
+        if (!value || /^\d+$/.test(value) || value.length > 120) return null;
+        return value;
+      }
+    );
+    data.name = name || 'Valued Customer';
+
+    // ---------- Invoice number ----------
+    let reference = findValueNearLabels(
+      allLines,
+      ['invoice #', 'invoice no', 'invoice number', 'reference #', 'ref #'],
+      (candidate) => {
+        const sameLine = candidate.match(/(?:invoice|reference|ref)\s*(?:#|no\.?|number)?\s*[:#-]?\s*([A-Z0-9][A-Z0-9\/-]*)/i);
+        if (sameLine?.[1]) return sameLine[1];
+        const standalone = candidate.match(/^#?([A-Z0-9][A-Z0-9\/-]{2,})$/i);
+        return standalone?.[1] || null;
+      }
+    );
+    if (!reference) {
+      const refMatch = allText.match(/(?:invoice|inv|reference|ref)\s*(?:#|no\.?|number)?\s*[:#-]?\s*([A-Z0-9][A-Z0-9\/-]{2,})/i);
+      reference = refMatch?.[1] || null;
+    }
+    if (!reference) {
+      const urlMatch = getInvoicePageUrl().match(/\/(\d{3,})(?:[/?#]|$)/);
+      reference = urlMatch?.[1] || null;
+    }
+    data.reference = reference || 'N/A';
+
+    // ---------- Total ----------
+    let total = null;
+    const totalLine = findValueNearLabels(
+      allLines,
+      ['grand total', 'total amount', 'amount due', 'balance due'],
+      (candidate) => {
+        const matches = [...candidate.matchAll(/(?:PKR|Rs\.?|₨|\$|€|£)?\s*([\d,]+(?:\.\d{1,2})?)/gi)];
+        if (!matches.length) return null;
+        const value = matches[matches.length - 1][1].replace(/,/g, '');
+        return Number.isFinite(Number(value)) ? Number(value) : null;
+      }
+    );
+    if (typeof totalLine === 'number') total = totalLine;
+    data.total = total;
+
+    // ---------- Items ----------
+    const items = [];
+    for (const source of sources) {
+      try {
+        const tables = source.doc.querySelectorAll('table');
+        for (const table of tables) {
+          const rows = table.querySelectorAll('tbody tr');
+          for (const row of rows) {
+            const cols = row.querySelectorAll('td');
+            if (cols.length >= 2) {
+              const desc = cols[0]?.textContent?.trim() || '';
+              const qty = cols[1]?.textContent?.trim() || '';
+              const price = cols[2]?.textContent?.trim() || '';
+              if (desc && desc.length > 1) items.push({ description: desc, quantity: qty, price });
+            }
+          }
+          if (items.length) break;
+        }
+      } catch (_) { /* ignore */ }
+      if (items.length) break;
+    }
+    data.items = items;
+
+    debugLines.push('=== EXTRACTED DATA ===');
+    debugLines.push(`Phone: "${data.phone}"`);
+    debugLines.push(`WhatsApp phone: "${normalizePhoneForWhatsApp(data.phone)}"`);
+    debugLines.push(`Name: "${data.name}"`);
+    debugLines.push(`Invoice: "${data.reference}"`);
+    debugLines.push(`Invoice URL: "${getInvoicePageUrl()}"`);
+    debugLines.push(`Total: ${data.total !== null ? data.total : 'not found'}`);
+    debugLines.push(`Items: ${data.items.length}`);
+    showDebug(debugLines.join('\n'));
+
+    return data;
+  }
+
+  // ---------- Try API first, fallback to scanner ----------
+  async function fetchInvoiceData() {
+    const url = getInvoicePageUrl();
+    const urlObj = new URL(url);
+    const search = urlObj.search;
+    const origin = urlObj.origin;
+
+    let invoiceId = null;
+    const idParams = ['id', 'invoice', 'invoiceId', 'reference', 'ref', 'view'];
+    for (const p of idParams) {
+      if (search.includes(p + '=')) {
+        invoiceId = new URLSearchParams(search).get(p);
+        break;
+      }
+    }
+    if (!invoiceId) {
+      const pathParts = urlObj.pathname.split('/');
+      for (const part of pathParts) {
+        if (/^\d+$/.test(part)) { invoiceId = part; break; }
+      }
+    }
+
+    const endpoints = [];
+    if (invoiceId) {
+      endpoints.push(`/api4/view-v1?id=${invoiceId}`);
+      endpoints.push(`/api4/invoice/${invoiceId}`);
+      endpoints.push(`/api/invoice/${invoiceId}`);
+      endpoints.push(`/api4/view/${invoiceId}`);
+      endpoints.push(`/api/view/${invoiceId}`);
+    }
+    endpoints.push(`/api4/view-v1${search}`);
+    // Current invoice search is already included above; do not directly access a cross-origin parent location.
+
+    const unique = [...new Set(endpoints)];
+
+    for (const endpoint of unique) {
+      try {
+        const fullUrl = endpoint.startsWith('http') ? endpoint : origin + endpoint;
+        const res = await fetch(fullUrl, {
+          headers: { 'Accept': 'application/json' },
+          signal: AbortSignal.timeout(3000)
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const json = await res.json();
+        if (json && typeof json === 'object') {
+          return json;
+        }
+      } catch (_) { /* ignore */ }
+    }
+
+    // If API fails, use the scanner
+    console.warn('API failed, falling back to page scanner');
+    return scanPageForInvoiceData();
+  }
+
+  // ---------- Extract fields from data (with fallbacks) ----------
+  function getPhone(data) {
+    const candidates = [
+      data?.recipient?.phone, data?.customer?.phone, data?.client?.phone,
+      data?.phone, data?.mobile, data?.recipient?.mobile,
+      data?.customer?.mobile, data?.client?.mobile,
+      data?.billingAddress?.phone, data?.shippingAddress?.phone,
+      data?.contact?.phone, data?.contact?.mobile,
+      data?.phoneNumber, data?.telephone, data?.primaryContact?.phone,
+      data?.primaryContact?.mobile, data?.contactPhone, data?.whatsapp,
+      data?.whatsApp, data?.customerPhone, data?.clientPhone
+    ];
+    for (const c of candidates) {
+      if ((typeof c === 'string' || typeof c === 'number') && String(c).trim()) {
+        const value = String(c).trim();
+        if (isValidWhatsAppPhone(value)) return value;
+      }
+    }
+
+    // Unknown API shapes: recursively inspect fields whose key indicates a phone number.
+    const seen = new Set();
+    function walk(value, depth) {
+      if (depth > 6 || value === null || value === undefined) return '';
+      if (typeof value !== 'object') return '';
+      if (seen.has(value)) return '';
+      seen.add(value);
+
+      if (Array.isArray(value)) {
+        for (const item of value) {
+          const found = walk(item, depth + 1);
+          if (found) return found;
+        }
+        return '';
+      }
+
+      for (const [key, fieldValue] of Object.entries(value)) {
+        if (/(phone|mobile|cell|whatsapp|telephone|contact.*number)/i.test(key)) {
+          if ((typeof fieldValue === 'string' || typeof fieldValue === 'number') && isValidWhatsAppPhone(fieldValue)) {
+            return String(fieldValue).trim();
+          }
+        }
+      }
+      for (const fieldValue of Object.values(value)) {
+        const found = walk(fieldValue, depth + 1);
+        if (found) return found;
+      }
+      return '';
+    }
+
+    return walk(data, 0) || '';
+  }
+
+  function getName(data) {
+    const candidates = [
+      data?.recipient?.name, data?.customer?.name, data?.client?.name,
+      data?.name, data?.recipient?.fullName, data?.customer?.fullName,
+      data?.fullName, data?.recipient?.company, data?.customer?.company,
+      data?.company, data?.customerName, data?.clientName,
+      data?.primaryContact?.name, data?.contact?.name
+    ];
+    for (const c of candidates) {
+      if (c && typeof c === 'string' && c.trim()) return c.trim();
+    }
+    if (Array.isArray(data) && data.length > 0) {
+      const first = data[0];
+      for (const f of ['name','fullName','company','customerName']) {
+        if (first[f]) return first[f];
+      }
+    }
+    return data.name || 'Valued Customer';
+  }
+
+  function getReference(data) {
+    const candidates = [
+      data?.reference, data?.invoiceNumber, data?.invoiceNo,
+      data?.ref, data?.number, data?.id, data?.invoiceId,
+      data?.documentNumber, data?.docNumber, data?.invoiceRef
+    ];
+    for (const c of candidates) {
+      if (c !== undefined && c !== null && c.toString().trim()) {
+        return c.toString().trim();
+      }
+    }
+    if (Array.isArray(data) && data.length > 0) {
+      const first = data[0];
+      for (const f of ['reference','invoiceNumber','invoiceNo','ref','number','id']) {
+        if (first[f]) return first[f].toString();
+      }
+    }
+    return data.reference || 'N/A';
+  }
+
+  function getItems(data) {
+    const candidates = [data?.items, data?.lineItems, data?.lines, data?.products, data?.invoiceItems];
+    for (const c of candidates) {
+      if (Array.isArray(c) && c.length > 0) return c;
+    }
+    return [];
+  }
+
+  function getTotal(data) {
+    const candidates = [data?.total, data?.grandTotal, data?.amount, data?.invoiceTotal, data?.subtotal];
+    for (const c of candidates) {
+      if (c !== undefined && c !== null && !isNaN(parseFloat(c))) {
+        return parseFloat(c);
+      }
+    }
+    return data.total || null;
+  }
+
+  // ---------- Build WhatsApp message ----------
+  function buildMessage(data, invoiceUrl) {
+    const name = getName(data);
+    const ref = getReference(data);
+    const items = getItems(data);
+    const total = getTotal(data);
+
+    let msg = `Hello ${name},\n\n`;
+    msg += `📄 *Invoice #${ref}*\n\n`;
+
+    if (items.length > 0) {
+      msg += `*Items:*\n`;
+      const maxShow = 8;
+      const shown = items.slice(0, maxShow);
+      for (const item of shown) {
+        const desc = item.description || item.name || item.product || 'Item';
+        const qty = item.quantity || item.qty || 1;
+        const price = item.price || item.unitPrice || item.amount || 0;
+        const priceStr = typeof price === 'number' ? price.toFixed(2) : price;
+        msg += `  • ${desc}  x${qty}  $${priceStr}\n`;
+      }
+      if (items.length > maxShow) {
+        msg += `  … and ${items.length - maxShow} more item(s)\n`;
+      }
+      msg += '\n';
+    }
+
+    if (total !== null) {
+      const totalStr = typeof total === 'number' ? total.toFixed(2) : total;
+      msg += `💰 *Total:* $${totalStr}\n\n`;
+    }
+
+    msg += `🔗 View full invoice:\n${invoiceUrl}\n\n`;
+    msg += `Thank you,\n*Vals Tracking (Pvt) Ltd*`;
+
+    return msg;
+  }
+
+  // ---------- Main send function ----------
+  async function sendToWhatsApp() {
+    if (isLoading) return;
+
+    setLoading(true);
+    setStatus('⏳ Scanning page for data…', 'info');
+
+    try {
+      const invoiceUrl = getInvoicePageUrl();
+
+      let data;
+      try {
+        data = await fetchInvoiceData();
+        // Merge with scanner result if missing fields
+        const scanned = scanPageForInvoiceData();
+        if (!data.phone && scanned.phone) data.phone = scanned.phone;
+        if (!data.reference && scanned.reference) data.reference = scanned.reference;
+        if (!data.name && scanned.name) data.name = scanned.name;
+        if (data.total === undefined && scanned.total !== undefined) data.total = scanned.total;
+        if (!data.items || data.items.length === 0) data.items = scanned.items || [];
+        extractedData = data;
+      } catch (err) {
+        console.warn('Fetch error:', err);
+        if (extractedData) {
+          data = extractedData;
+          setStatus('⚠️ Using cached data (API failed)', 'info');
+        } else {
+          data = scanPageForInvoiceData();
+          if (!data.phone && !data.reference) {
+            throw new Error('Could not extract any invoice data from the page.');
+          }
+          setStatus('⚠️ Using page scan (API unavailable)', 'info');
+        }
+      }
+
+      const manualPhone = manualPhoneInput?.value?.trim() || '';
+      const phone = manualPhone || getPhone(data);
+      if (!phone) {
+        setStatus('❌ No phone number found on this page.', 'error');
+        setLoading(false);
+        return;
+      }
+
+      const cleanPhone = normalizePhoneForWhatsApp(phone);
+      if (!isValidWhatsAppPhone(cleanPhone)) {
+        setStatus('❌ Invalid phone. Use 03XXXXXXXXX or +92XXXXXXXXXX.', 'error');
+        setLoading(false);
+        return;
+      }
+
+      const ref = getReference(data);
+      updateMeta(phone, ref);
+
+      const message = buildMessage(data, invoiceUrl);
+      const waUrl = `https://wa.me/${cleanPhone}?text=${encodeURIComponent(message)}`;
+      window.open(waUrl, '_blank');
+
+      setStatus(`✅ WhatsApp opened for ${getName(data)} (${cleanPhone})`, 'success');
+      setLoading(false);
+
+    } catch (err) {
+      console.error('Send error:', err);
+      setStatus(`❌ ${err.message || 'Something went wrong.'}`, 'error');
+      setLoading(false);
+    }
+  }
+
+  // ---------- Auto-load on page start ----------
+  async function autoLoad() {
+    try {
+      const data = await fetchInvoiceData();
+      const scanned = scanPageForInvoiceData();
+      if (!data.phone && scanned.phone) data.phone = scanned.phone;
+      if (!data.reference && scanned.reference) data.reference = scanned.reference;
+      if (!data.name && scanned.name) data.name = scanned.name;
+      if (data.total === undefined && scanned.total !== undefined) data.total = scanned.total;
+      if (!data.items || data.items.length === 0) data.items = scanned.items || [];
+      extractedData = data;
+      const phone = manualPhoneInput?.value?.trim() || getPhone(data);
+      const ref = getReference(data);
+      updateMeta(phone, ref);
+      if (phone) {
+        if (manualPhoneInput && !manualPhoneInput.value.trim()) manualPhoneInput.value = phone;
+        setStatus('✅ Data loaded – ready to send', 'success');
+      } else {
+        setStatus('⚠️ Phone not exposed by page. Enter it above once.', 'info');
+      }
+    } catch (err) {
+      console.warn('Auto-load failed:', err);
+      const scanned = scanPageForInvoiceData();
+      if (scanned.phone || scanned.reference) {
+        extractedData = scanned;
+        updateMeta(scanned.phone || '', scanned.reference || '');
+        setStatus('📄 Data extracted from page – ready', 'success');
+      } else {
+        setStatus('ℹ️ Click "Send" to scan for invoice data.', 'info');
+        connectionStatus.textContent = '🔍 Scan page for data';
+        statusDot.className = 'dot inactive';
+      }
+    }
+  }
+
+  manualPhoneInput.addEventListener('input', function() {
+    const value = manualPhoneInput.value.trim();
+    const ref = extractedData ? getReference(extractedData) : '';
+    updateMeta(value, ref);
+    if (!value) {
+      setStatus('ℹ️ Number removed. Auto-detect will be tried again.', 'info');
+    } else if (isValidWhatsAppPhone(value)) {
+      setStatus('✅ Phone number ready', 'success');
+    } else {
+      setStatus('⚠️ Enter complete number: 03XXXXXXXXX or +92XXXXXXXXXX', 'info');
+    }
+  });
+
+  // ---------- Events ----------
+  sendBtn.addEventListener('click', sendToWhatsApp);
+
+  document.addEventListener('keydown', (e) => {
+    if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+      e.preventDefault();
+      sendToWhatsApp();
+    }
+  });
+
+  // Run
+  autoLoad();
+
+})();
+</script>
+</body>
+</html><!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>WhatsApp Invoice Sender</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+      background: #f0f2f5;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+      padding: 20px;
+    }
+    .card {
+      background: #fff;
+      border-radius: 20px;
+      box-shadow: 0 12px 40px rgba(0,0,0,0.1);
+      padding: 30px 32px 36px;
+      max-width: 560px;
+      width: 100%;
+    }
+    .card-header {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 20px;
+    }
+    .card-header h2 {
+      font-size: 22px;
+      font-weight: 600;
+      color: #1a2634;
+    }
+    .badge {
+      margin-left: auto;
+      font-size: 12px;
+      font-weight: 600;
+      color: #25D366;
+      background: #e6f9ee;
+      padding: 4px 12px;
+      border-radius: 100px;
+    }
+    .desc {
+      color: #4a5a6e;
+      font-size: 15px;
+      line-height: 1.5;
+      margin-bottom: 24px;
+    }
+    .wa-btn {
+      background-color: #25D366;
+      color: #fff;
+      font-weight: 600;
+      font-size: 16px;
+      padding: 14px 28px;
+      border: none;
+      border-radius: 12px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+      cursor: pointer;
+      width: 100%;
+      transition: background 0.2s, box-shadow 0.2s;
+      box-shadow: 0 4px 12px rgba(37,211,102,0.30);
+    }
+    .wa-btn:hover:not(:disabled) {
+      background-color: #1da851;
+      box-shadow: 0 6px 18px rgba(37,211,102,0.40);
+      transform: translateY(-1px);
+    }
+    .wa-btn:disabled {
+      opacity: 0.7;
+      cursor: not-allowed;
+      transform: none;
+    }
+    .wa-btn .spinner {
+      display: inline-block;
+      width: 20px;
+      height: 20px;
+      border: 2.5px solid rgba(255,255,255,0.25);
+      border-top-color: #fff;
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .status {
+      margin-top: 18px;
+      font-size: 14px;
+      text-align: center;
+      padding: 8px 12px;
+      border-radius: 10px;
+      min-height: 44px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      background: transparent;
+      color: #4a5a6e;
+    }
+    .status.error { background: #fef0ef; color: #b3362b; }
+    .status.success { background: #e6f9ee; color: #1a7a3e; }
+    .status.info { background: #eef3f9; color: #1f4b7a; }
+    .meta {
+      margin-top: 24px;
+      padding-top: 20px;
+      border-top: 1px solid #e9edf2;
+      display: flex;
+      justify-content: space-between;
+      font-size: 13px;
+      color: #7a8a9e;
+      flex-wrap: wrap;
+    }
+    .meta .dot {
+      display: inline-block;
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #25D366;
+      margin-right: 4px;
+    }
+    .meta .dot.inactive { background: #cbd5e1; }
+    /* Debug panel */
+    #debugPanel {
+      margin-top: 16px;
+      padding: 12px;
+      background: #f8f9fa;
+      border-radius: 8px;
+      font-size: 13px;
+      color: #333;
+      border: 1px solid #e0e0e0;
+      display: none;
+      max-height: 200px;
+      overflow-y: auto;
+      white-space: pre-wrap;
+      word-break: break-all;
+    }
+    #debugPanel.show { display: block; }
+    .debug-toggle {
+      margin-top: 12px;
+      text-align: right;
+      font-size: 12px;
+      color: #7a8a9e;
+      cursor: pointer;
+      text-decoration: underline;
+    }
     @media (max-width: 480px) {
       .card { padding: 24px 20px 28px; }
       .card-header h2 { font-size: 19px; }
