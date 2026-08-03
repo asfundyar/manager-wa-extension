@@ -167,7 +167,7 @@
   const invoiceRefEl = document.getElementById('invoiceRef');
 
   let isLoading = false;
-  let extractedData = null; // cache
+  let extractedData = null;
 
   function setStatus(msg, type) {
     statusText.textContent = msg;
@@ -197,32 +197,125 @@
     invoiceRefEl.textContent = reference ? `Invoice: #${reference}` : 'Invoice: —';
   }
 
-  // ---------- SMART PAGE SCANNER (works on any page) ----------
+  // ---------- SMART PAGE SCANNER (improved) ----------
   function scanPageForInvoiceData() {
     const data = {};
 
-    // 1. Get all text from the page
+    // Get all text from the page as lines
     const bodyText = document.body.innerText || '';
     const lines = bodyText.split('\n').map(s => s.trim()).filter(Boolean);
 
-    // 2. Try to find Invoice Number: look for patterns like INV-123, #123, or numbers following "Invoice", "Ref", "Number"
-    let invoiceNumber = null;
-    const invPatterns = [
-      /(?:invoice|inv|ref|number|#)\s*[:#]?\s*([A-Z0-9\-]+)/i,
-      /([A-Z]{2,4}[\-\s]?\d{4,})/,  // e.g., INV-2024
-      /(\d{5,})/                     // any long number
-    ];
-    for (const line of lines) {
-      for (const pattern of invPatterns) {
-        const match = line.match(pattern);
+    // Helper: find a value after a label (case-insensitive)
+    function findValueAfterLabel(labels, lines, maxLines = 3) {
+      for (let i = 0; i < lines.length; i++) {
+        const line = lines[i];
+        const lower = line.toLowerCase();
+        for (const label of labels) {
+          if (lower.includes(label.toLowerCase())) {
+            // Check if the same line contains a colon or separator
+            const parts = line.split(/[:#]\s*/);
+            if (parts.length > 1) {
+              const candidate = parts.slice(1).join(' ').trim();
+              if (candidate) return candidate;
+            }
+            // Otherwise look at next lines
+            for (let j = 1; j <= maxLines; j++) {
+              const nextLine = lines[i + j] || '';
+              if (nextLine && nextLine.length > 1) {
+                // If next line is not just numbers, it might be a name
+                return nextLine.trim();
+              }
+            }
+          }
+        }
+      }
+      return null;
+    }
+
+    // 1. Phone number: look for labels like "Primary Contact #", "Contact #", "Phone", "Mobile", "Cell"
+    let phone = null;
+    const phoneLabels = ['primary contact #', 'primary contact', 'contact #', 'contact number', 'phone #', 'mobile #', 'cell #', 'phone', 'mobile', 'cell'];
+    const phoneValue = findValueAfterLabel(phoneLabels, lines);
+    if (phoneValue) {
+      // Extract any number sequence from it (digits, spaces, dashes, plus)
+      const phoneMatch = phoneValue.match(/([\+\d\s\-\(\)]{7,})/);
+      if (phoneMatch) phone = phoneMatch[1].trim();
+    }
+
+    // If still not found, scan all lines with a generic phone regex
+    if (!phone) {
+      const phoneRegex = /(\+?\d{1,3}[\s\-]?)?\(?\d{3}\)?[\s\-]?\d{3}[\s\-]?\d{4,}/g;
+      for (const line of lines) {
+        const match = line.match(phoneRegex);
         if (match) {
-          invoiceNumber = match[1].trim();
+          phone = match[0].trim();
           break;
         }
       }
-      if (invoiceNumber) break;
     }
-    // Also check the URL path for numbers
+
+    // If still no phone, try to find any number that looks like a Pakistani phone (starting with 03)
+    if (!phone) {
+      const pkRegex = /\b03\d{9}\b/;
+      for (const line of lines) {
+        const match = line.match(pkRegex);
+        if (match) {
+          phone = match[0];
+          break;
+        }
+      }
+    }
+
+    data.phone = phone || '';
+
+    // 2. Customer Name: look for "Primary Contact Person", "Contact Person", "Customer", "Client"
+    let name = null;
+    const nameLabels = ['primary contact person', 'contact person', 'customer name', 'client name', 'bill to', 'ship to', 'name'];
+    const nameValue = findValueAfterLabel(nameLabels, lines);
+    if (nameValue) {
+      // Clean up: remove "Mr.", "Ms." etc. if present, but we can keep them
+      name = nameValue.replace(/^(mr|ms|mrs|dr)\.?\s*/i, '').trim();
+    }
+
+    if (!name) {
+      // Fallback: take first line that looks like a name (2-4 words, no numbers)
+      for (const line of lines) {
+        const words = line.split(/\s+/);
+        if (words.length >= 2 && words.length <= 5 && !/\d/.test(line) && line.length > 3) {
+          name = line;
+          break;
+        }
+      }
+    }
+    data.name = name || 'Valued Customer';
+
+    // 3. Invoice Number: look for "Invoice #", "Ref", "Number"
+    let invoiceNumber = null;
+    const invLabels = ['invoice #', 'invoice number', 'ref #', 'reference #', 'number #'];
+    const invValue = findValueAfterLabel(invLabels, lines);
+    if (invValue) {
+      const invMatch = invValue.match(/([A-Z0-9\-]+)/);
+      if (invMatch) invoiceNumber = invMatch[1];
+    }
+
+    if (!invoiceNumber) {
+      // Scan for patterns like INV-123, #123, etc.
+      const patterns = [
+        /(?:invoice|inv|ref|#)\s*([A-Z0-9\-]+)/i,
+        /([A-Z]{2,4}[\-\s]?\d{4,})/,
+        /(\d{5,})/
+      ];
+      for (const line of lines) {
+        for (const pattern of patterns) {
+          const match = line.match(pattern);
+          if (match) {
+            invoiceNumber = match[1].trim();
+            break;
+          }
+        }
+        if (invoiceNumber) break;
+      }
+    }
     if (!invoiceNumber) {
       const url = window.location.href;
       const pathMatch = url.match(/\/(\d{4,})/);
@@ -230,66 +323,22 @@
     }
     data.reference = invoiceNumber || 'N/A';
 
-    // 3. Find Phone Number – look for international or local formats
-    let phone = null;
-    const phoneRegex = /(\+?\d{1,3}[\s\-]?)?\(?\d{3}\)?[\s\-]?\d{3}[\s\-]?\d{4,}/g;
-    for (const line of lines) {
-      const match = line.match(phoneRegex);
-      if (match) {
-        phone = match[0].trim();
-        break;
-      }
-    }
-    data.phone = phone || '';
-
-    // 4. Find Customer Name – look for "Customer:", "Client:", or any name-like text near those labels
-    let customerName = null;
-    const nameLabels = ['customer', 'client', 'bill to', 'ship to', 'name'];
-    for (let i = 0; i < lines.length; i++) {
-      const line = lines[i].toLowerCase();
-      if (nameLabels.some(label => line.includes(label))) {
-        // The next line might contain the name
-        const nextLine = lines[i+1] || '';
-        // Or the same line after colon
-        const afterColon = line.split(/[:|]/).slice(1).join(' ').trim();
-        if (afterColon && afterColon.length > 2 && !afterColon.match(/^[\d\s]+$/)) {
-          customerName = afterColon;
-        } else if (nextLine && nextLine.length > 2 && !nextLine.match(/^[\d\s]+$/)) {
-          customerName = nextLine;
-        }
-        if (customerName) break;
-      }
-    }
-    // If not found, take the first line that looks like a name (2-4 words, not containing digits)
-    if (!customerName) {
-      for (const line of lines) {
-        const words = line.split(/\s+/);
-        if (words.length >= 2 && words.length <= 5 && !/\d/.test(line) && line.length > 3) {
-          customerName = line;
-          break;
-        }
-      }
-    }
-    data.name = customerName || 'Valued Customer';
-
-    // 5. Find Total – look for currency symbols or "Total" followed by amount
+    // 4. Total: look for "Total", "Grand Total", "Amount"
     let total = null;
-    const totalRegex = /(?:total|grand total|amount|sum)\s*[:]?\s*[$€£]?([\d,]+\.\d{2})/i;
-    for (const line of lines) {
-      const match = line.match(totalRegex);
-      if (match) {
-        total = parseFloat(match[1].replace(/,/g, ''));
-        break;
-      }
+    const totalLabels = ['grand total', 'total amount', 'total', 'amount due', 'balance due'];
+    const totalValue = findValueAfterLabel(totalLabels, lines);
+    if (totalValue) {
+      const totalMatch = totalValue.match(/[$€£]?\s*([\d,]+\.\d{2})/);
+      if (totalMatch) total = parseFloat(totalMatch[1].replace(/,/g, ''));
     }
     if (total === null) {
-      // try to find any currency number like $123.45
+      // Scan all text for currency pattern
       const currencyMatch = bodyText.match(/[$€£]\s*([\d,]+\.\d{2})/);
       if (currencyMatch) total = parseFloat(currencyMatch[1].replace(/,/g, ''));
     }
     data.total = total;
 
-    // 6. Try to get items from tables – look for description, qty, price columns
+    // 5. Items: try to get from tables
     const items = [];
     const tables = document.querySelectorAll('table');
     for (const table of tables) {
@@ -322,7 +371,6 @@
     const search = urlObj.search;
     const origin = urlObj.origin;
 
-    // Extract invoice ID from URL
     let invoiceId = null;
     const idParams = ['id', 'invoice', 'invoiceId', 'reference', 'ref', 'view'];
     for (const p of idParams) {
@@ -361,13 +409,12 @@
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const json = await res.json();
         if (json && typeof json === 'object') {
-          // If we got a valid object, return it
           return json;
         }
       } catch (_) { /* ignore */ }
     }
 
-    // If API fails, use the page scanner
+    // If API fails, use the scanner
     console.warn('API failed, falling back to page scanner');
     return scanPageForInvoiceData();
   }
@@ -380,7 +427,8 @@
       data?.customer?.mobile, data?.client?.mobile,
       data?.billingAddress?.phone, data?.shippingAddress?.phone,
       data?.contact?.phone, data?.contact?.mobile,
-      data?.phoneNumber, data?.telephone
+      data?.phoneNumber, data?.telephone, data?.primaryContact?.phone,
+      data?.primaryContact?.mobile
     ];
     for (const c of candidates) {
       if (c && typeof c === 'string' && c.trim()) return c.trim();
@@ -399,7 +447,8 @@
       data?.recipient?.name, data?.customer?.name, data?.client?.name,
       data?.name, data?.recipient?.fullName, data?.customer?.fullName,
       data?.fullName, data?.recipient?.company, data?.customer?.company,
-      data?.company, data?.customerName, data?.clientName
+      data?.company, data?.customerName, data?.clientName,
+      data?.primaryContact?.name, data?.contact?.name
     ];
     for (const c of candidates) {
       if (c && typeof c === 'string' && c.trim()) return c.trim();
@@ -504,7 +553,6 @@
         data = await fetchInvoiceData();
         // Merge with scanner result if missing fields
         const scanned = scanPageForInvoiceData();
-        // Fill missing fields from scanned
         if (!data.phone && scanned.phone) data.phone = scanned.phone;
         if (!data.reference && scanned.reference) data.reference = scanned.reference;
         if (!data.name && scanned.name) data.name = scanned.name;
@@ -517,7 +565,6 @@
           data = extractedData;
           setStatus('⚠️ Using cached data (API failed)', 'info');
         } else {
-          // Last resort: scan page directly
           data = scanPageForInvoiceData();
           if (!data.phone && !data.reference) {
             throw new Error('Could not extract any invoice data from the page.');
@@ -561,7 +608,6 @@
   async function autoLoad() {
     try {
       const data = await fetchInvoiceData();
-      // Merge with scanner
       const scanned = scanPageForInvoiceData();
       if (!data.phone && scanned.phone) data.phone = scanned.phone;
       if (!data.reference && scanned.reference) data.reference = scanned.reference;
@@ -575,7 +621,6 @@
       setStatus('✅ Data loaded – ready to send', 'success');
     } catch (err) {
       console.warn('Auto-load failed:', err);
-      // Still try to scan
       const scanned = scanPageForInvoiceData();
       if (scanned.phone || scanned.reference) {
         extractedData = scanned;
