@@ -1,110 +1,530 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="color-scheme" content="light">
-  <title>WhatsApp Invoice</title>
-  <link rel="stylesheet" href="styles.css">
-  <script src="app.js" defer></script>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>WhatsApp Extension – Manager.io</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+      background: #f5f7fa;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+      padding: 20px;
+    }
+    .card {
+      background: #fff;
+      border-radius: 20px;
+      box-shadow: 0 12px 40px rgba(0,0,0,0.08);
+      padding: 32px 36px 40px;
+      max-width: 540px;
+      width: 100%;
+    }
+    .card-header {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 24px;
+    }
+    .card-header h2 {
+      font-size: 22px;
+      font-weight: 600;
+      color: #1a2634;
+    }
+    .badge {
+      margin-left: auto;
+      font-size: 12px;
+      font-weight: 600;
+      color: #25D366;
+      background: #e6f9ee;
+      padding: 4px 12px;
+      border-radius: 100px;
+    }
+    .desc {
+      color: #4a5a6e;
+      font-size: 15px;
+      line-height: 1.5;
+      margin-bottom: 28px;
+    }
+    .wa-btn {
+      background-color: #25D366;
+      color: #fff;
+      font-weight: 600;
+      font-size: 16px;
+      padding: 14px 28px;
+      border: none;
+      border-radius: 12px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+      cursor: pointer;
+      width: 100%;
+      transition: background 0.2s, box-shadow 0.2s;
+      box-shadow: 0 4px 12px rgba(37,211,102,0.30);
+    }
+    .wa-btn:hover:not(:disabled) {
+      background-color: #1da851;
+      box-shadow: 0 6px 18px rgba(37,211,102,0.40);
+      transform: translateY(-1px);
+    }
+    .wa-btn:disabled {
+      opacity: 0.7;
+      cursor: not-allowed;
+      transform: none;
+    }
+    .wa-btn .spinner {
+      display: inline-block;
+      width: 20px;
+      height: 20px;
+      border: 2.5px solid rgba(255,255,255,0.25);
+      border-top-color: #fff;
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .status {
+      margin-top: 18px;
+      font-size: 14px;
+      text-align: center;
+      padding: 8px 12px;
+      border-radius: 10px;
+      min-height: 44px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      background: transparent;
+      color: #4a5a6e;
+    }
+    .status.error { background: #fef0ef; color: #b3362b; }
+    .status.success { background: #e6f9ee; color: #1a7a3e; }
+    .status.info { background: #eef3f9; color: #1f4b7a; }
+    .meta {
+      margin-top: 24px;
+      padding-top: 20px;
+      border-top: 1px solid #e9edf2;
+      display: flex;
+      justify-content: space-between;
+      font-size: 13px;
+      color: #7a8a9e;
+      flex-wrap: wrap;
+    }
+    .meta .dot {
+      display: inline-block;
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #25D366;
+      margin-right: 4px;
+    }
+    .meta .dot.inactive { background: #cbd5e1; }
+    @media (max-width: 480px) {
+      .card { padding: 24px 20px 28px; }
+      .card-header h2 { font-size: 19px; }
+    }
+  </style>
 </head>
 <body>
-  <main class="app-shell">
-    <header class="app-header no-print">
-      <div class="brand-mark" aria-hidden="true">WA</div>
-      <div>
-        <h1>WhatsApp Invoice</h1>
-        <p>Manager.io invoice preview aur WhatsApp message</p>
-      </div>
-    </header>
+<div class="card">
+  <div class="card-header">
+    <svg width="28" height="28" viewBox="0 0 24 24" fill="none">
+      <path d="M12.012 2C6.506 2 2.023 6.478 2.022 11.984c0 1.762.459 3.48 1.333 5.001l-1.416 5.171 5.291-1.387c1.467.8 3.117 1.222 4.78 1.223h.004c5.505 0 9.988-4.478 9.989-9.985 0-2.667-1.037-5.176-2.925-7.062C17.1 3.039 14.59 2.001 11.923 2h.089z" fill="#25D366"/>
+      <path d="M17.2 14.3c-.3-.15-1.7-.85-2-.95-.3-.1-.5-.15-.7.15-.2.3-.8.95-1 1.15-.2.2-.4.25-.7.1-.3-.15-1.3-.5-2.5-1.55-.9-.8-1.5-1.8-1.7-2.1-.2-.3-.02-.45.15-.6.15-.15.35-.4.5-.6.15-.2.2-.35.3-.6.1-.25.05-.45-.02-.65-.07-.2-.7-1.65-.95-2.25-.25-.6-.5-.5-.7-.5-.2 0-.4-.05-.6-.05-.2 0-.55.1-.85.45-.3.35-1.1 1.1-1.1 2.65s1.15 3.1 1.3 3.3c.15.2 2.25 3.45 5.45 4.65 2.55.95 3.3.8 3.9.75.6-.05 1.9-.75 2.15-1.5.25-.75.25-1.4.15-1.55-.1-.15-.3-.25-.6-.4z" fill="#fff"/>
+    </svg>
+    <h2>WhatsApp Send</h2>
+    <span class="badge">Manager.io</span>
+  </div>
+  <p class="desc">
+    <strong>Automatically</strong> fetches the current invoice and customer phone. Click the button to send a complete summary via WhatsApp.
+  </p>
+  <button class="wa-btn" id="sendBtn">
+    <svg width="20" height="20" fill="currentColor" viewBox="0 0 24 24">
+      <path d="M12.012 2c-5.506 0-9.989 4.478-9.99 9.984 0 1.762.459 3.48 1.333 5.001l-1.416 5.171 5.291-1.387c1.467.8 3.117 1.222 4.78 1.223h.004c5.505 0 9.988-4.478 9.989-9.985 0-2.667-1.037-5.176-2.925-7.062-1.887-1.886-4.398-2.924-7.066-2.925zm0 1.992c4.408 0 7.99 3.582 7.991 7.99 0 2.135-.83 4.141-2.339 5.651-1.509 1.509-3.516 2.34-5.652 2.34h-.003c-1.42 0-2.812-.37-4.032-1.071l-.289-.167-2.992.784.798-2.918-.184-.294c-.77-1.228-1.178-2.648-1.178-4.102 0-4.408 3.582-7.99 7.99-7.99z"/>
+    </svg>
+    <span id="btnLabel">Send via WhatsApp</span>
+  </button>
+  <div class="status" id="status"><span id="statusText">🔵 Ready</span></div>
+  <div class="meta">
+    <span><span class="dot" id="statusDot"></span><span id="connectionStatus">Checking connection…</span></span>
+    <span id="invoiceRef">Invoice: —</span>
+  </div>
+</div>
 
-    <section id="statusCard" class="status-card no-print" aria-live="polite">
-      <span id="statusDot" class="status-dot loading"></span>
-      <div>
-        <strong id="statusTitle">Invoice load ho rahi hai…</strong>
-        <p id="statusText">Manager.io se current invoice context hasil kiya ja raha hai.</p>
-      </div>
-    </section>
+<script>
+(function() {
+  'use strict';
 
-    <section id="controls" class="controls-card no-print" hidden>
-      <div class="control-grid">
-        <label>
-          <span>Customer WhatsApp Number</span>
-          <input id="phoneInput" type="tel" inputmode="tel" autocomplete="tel"
-                 placeholder="923001234567">
-          <small id="phoneHint">Format: 92XXXXXXXXXX</small>
-        </label>
+  const sendBtn = document.getElementById('sendBtn');
+  const btnLabel = document.getElementById('btnLabel');
+  const statusEl = document.getElementById('status');
+  const statusText = document.getElementById('statusText');
+  const statusDot = document.getElementById('statusDot');
+  const connectionStatus = document.getElementById('connectionStatus');
+  const invoiceRefEl = document.getElementById('invoiceRef');
 
-        <label class="message-field">
-          <span>WhatsApp Message</span>
-          <textarea id="messageInput" rows="8"></textarea>
-        </label>
-      </div>
+  let isLoading = false;
+  let cachedData = null;
 
-      <div class="button-row">
-        <button id="whatsappButton" class="btn btn-whatsapp" type="button">
-          Open WhatsApp
-        </button>
-        <button id="copyButton" class="btn btn-secondary" type="button">
-          Copy Message
-        </button>
-        <button id="printButton" class="btn btn-secondary" type="button">
-          Print / Save PDF
-        </button>
-        <button id="reloadButton" class="btn btn-ghost" type="button">
-          Reload Invoice
-        </button>
-      </div>
+  function setStatus(msg, type) {
+    statusText.textContent = msg;
+    statusEl.className = 'status';
+    if (type) statusEl.classList.add(type);
+  }
 
-      <p class="notice">
-        Normal WhatsApp link PDF ko automatically attach nahi karta. “Print / Save PDF” se invoice PDF save karein,
-        phir WhatsApp chat mein manually attach karein.
-      </p>
-    </section>
+  function setLoading(loading) {
+    isLoading = loading;
+    sendBtn.disabled = loading;
+    if (loading) {
+      btnLabel.innerHTML = '<span class="spinner"></span> Loading…';
+    } else {
+      btnLabel.textContent = 'Send via WhatsApp';
+    }
+  }
 
-    <section id="invoicePreview" class="invoice-paper" hidden aria-label="Invoice preview">
-      <div class="invoice-top">
-        <div>
-          <p class="eyebrow">SALES INVOICE</p>
-          <h2 id="businessName">Business Name</h2>
-          <p id="businessAddress" class="multiline muted"></p>
-        </div>
-        <div class="invoice-title-block">
-          <span>Invoice</span>
-          <strong id="invoiceReference">—</strong>
-        </div>
-      </div>
+  function updateMeta(phone, reference) {
+    if (phone) {
+      const clean = phone.replace(/[^0-9]/g, '');
+      connectionStatus.textContent = `📱 ${clean.slice(0,4)}••••${clean.slice(-2)}`;
+      statusDot.className = 'dot';
+    } else {
+      connectionStatus.textContent = '⚠️ No phone found';
+      statusDot.className = 'dot inactive';
+    }
+    invoiceRefEl.textContent = reference ? `Invoice: #${reference}` : 'Invoice: —';
+  }
 
-      <div class="party-grid">
-        <div class="party-card">
-          <span class="section-label">BILL TO</span>
-          <strong id="customerName">—</strong>
-          <p id="customerAddress" class="multiline muted"></p>
-          <p id="customerEmail" class="muted"></p>
-        </div>
-        <div id="invoiceFields" class="fields-card"></div>
-      </div>
+  // ---------- DOM scraping fallback (if API fails) ----------
+  function scrapeFromPage() {
+    const data = {};
+    // Common selectors for Manager.io
+    const refEl = document.querySelector('[data-testid="invoice-number"], .invoice-number, .reference, [class*="ref"], [class*="invoice"]');
+    if (refEl) data.reference = refEl.textContent.trim();
 
-      <p id="invoiceDescription" class="invoice-description" hidden></p>
+    const phoneEl = document.querySelector('[data-testid="customer-phone"], .phone, [class*="phone"], [class*="mobile"]');
+    if (phoneEl) data.phone = phoneEl.textContent.trim();
 
-      <div class="table-wrap">
-        <table id="invoiceTable">
-          <thead id="invoiceTableHead"></thead>
-          <tbody id="invoiceTableBody"></tbody>
-          <tfoot id="invoiceTableFoot"></tfoot>
-        </table>
-      </div>
+    const nameEl = document.querySelector('[data-testid="customer-name"], .customer-name, .client-name, .name');
+    if (nameEl) data.name = nameEl.textContent.trim();
 
-      <div class="invoice-footer">
-        <p>Generated from Manager.io for WhatsApp sharing.</p>
-      </div>
-    </section>
+    const totalEl = document.querySelector('[data-testid="total"], .grand-total, .total, [class*="total"]');
+    if (totalEl) data.total = totalEl.textContent.trim();
 
-    <section id="errorCard" class="error-card no-print" hidden>
-      <h2>Invoice load nahi ho saki</h2>
-      <p id="errorText"></p>
-      <button id="errorRetryButton" class="btn btn-secondary" type="button">Try Again</button>
-    </section>
-  </main>
+    // Try to get items from table
+    const rows = document.querySelectorAll('table tbody tr');
+    if (rows.length > 0) {
+      data.items = [];
+      rows.forEach(row => {
+        const cols = row.querySelectorAll('td');
+        if (cols.length >= 2) {
+          const desc = cols[0]?.textContent.trim() || '';
+          const qty = cols[1]?.textContent.trim() || '';
+          const price = cols[2]?.textContent.trim() || '';
+          if (desc) data.items.push({ description: desc, quantity: qty, price: price });
+        }
+      });
+    }
+    return data;
+  }
+
+  // ---------- Fetch from API with multiple attempts ----------
+  async function fetchInvoiceData() {
+    const url = window.location.href;
+    const urlObj = new URL(url);
+    const search = urlObj.search;
+    const origin = urlObj.origin;
+
+    // Extract invoice ID from URL
+    let invoiceId = null;
+    const idParams = ['id', 'invoice', 'invoiceId', 'reference', 'ref', 'view'];
+    for (const p of idParams) {
+      if (search.includes(p + '=')) {
+        invoiceId = new URLSearchParams(search).get(p);
+        break;
+      }
+    }
+    if (!invoiceId) {
+      const pathParts = urlObj.pathname.split('/');
+      for (const part of pathParts) {
+        if (/^\d+$/.test(part)) { invoiceId = part; break; }
+      }
+    }
+
+    // Possible endpoints – you can extend this list if your Manager.io uses different routes
+    const endpoints = [];
+    if (invoiceId) {
+      endpoints.push(`/api4/view-v1?id=${invoiceId}`);
+      endpoints.push(`/api4/invoice/${invoiceId}`);
+      endpoints.push(`/api/invoice/${invoiceId}`);
+      endpoints.push(`/api4/view/${invoiceId}`);
+      endpoints.push(`/api/view/${invoiceId}`);
+    }
+    endpoints.push(`/api4/view-v1${search}`);
+    endpoints.push(`/api4/view-v1${window.parent?.location?.search || ''}`);
+
+    // Remove duplicates
+    const unique = [...new Set(endpoints)];
+
+    let lastError = null;
+    for (const endpoint of unique) {
+      try {
+        const fullUrl = endpoint.startsWith('http') ? endpoint : origin + endpoint;
+        const res = await fetch(fullUrl, {
+          headers: { 'Accept': 'application/json' },
+          signal: AbortSignal.timeout(4000)
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const json = await res.json();
+        if (json && typeof json === 'object') {
+          return json; // success
+        }
+      } catch (err) {
+        lastError = err;
+        console.warn('API attempt failed:', endpoint, err);
+      }
+    }
+
+    // If all API attempts fail, try DOM scraping
+    console.warn('All API attempts failed, falling back to DOM scraping');
+    const scraped = scrapeFromPage();
+    if (scraped.reference || scraped.phone) {
+      return scraped;
+    }
+
+    throw new Error('Could not retrieve invoice data (API and DOM both failed).');
+  }
+
+  // ---------- Extract fields from data ----------
+  function getPhone(data) {
+    const candidates = [
+      data?.recipient?.phone, data?.customer?.phone, data?.client?.phone,
+      data?.phone, data?.mobile, data?.recipient?.mobile,
+      data?.customer?.mobile, data?.client?.mobile,
+      data?.billingAddress?.phone, data?.shippingAddress?.phone,
+      data?.contact?.phone, data?.contact?.mobile
+    ];
+    for (const c of candidates) {
+      if (c && typeof c === 'string' && c.trim()) return c.trim();
+    }
+    if (Array.isArray(data) && data.length > 0) {
+      const first = data[0];
+      for (const f of ['phone','mobile','contactPhone']) {
+        if (first[f]) return first[f];
+      }
+    }
+    return '';
+  }
+
+  function getName(data) {
+    const candidates = [
+      data?.recipient?.name, data?.customer?.name, data?.client?.name,
+      data?.name, data?.recipient?.fullName, data?.customer?.fullName,
+      data?.fullName, data?.recipient?.company, data?.customer?.company,
+      data?.company
+    ];
+    for (const c of candidates) {
+      if (c && typeof c === 'string' && c.trim()) return c.trim();
+    }
+    if (Array.isArray(data) && data.length > 0) {
+      const first = data[0];
+      for (const f of ['name','fullName','company']) {
+        if (first[f]) return first[f];
+      }
+    }
+    return 'Valued Customer';
+  }
+
+  function getReference(data) {
+    const candidates = [
+      data?.reference, data?.invoiceNumber, data?.invoiceNo,
+      data?.ref, data?.number, data?.id, data?.invoiceId,
+      data?.documentNumber, data?.docNumber
+    ];
+    for (const c of candidates) {
+      if (c !== undefined && c !== null && c.toString().trim()) {
+        return c.toString().trim();
+      }
+    }
+    if (Array.isArray(data) && data.length > 0) {
+      const first = data[0];
+      for (const f of ['reference','invoiceNumber','invoiceNo','ref','number','id']) {
+        if (first[f]) return first[f].toString();
+      }
+    }
+    // Try to extract from URL
+    const url = window.location.href;
+    const match = url.match(/[?&](?:id|invoice|ref)=([^&]+)/i);
+    if (match) return match[1];
+    const pathMatch = url.match(/\/(?:view|invoice)\/(\d+)/i);
+    if (pathMatch) return pathMatch[1];
+    return 'N/A';
+  }
+
+  function getItems(data) {
+    const candidates = [data?.items, data?.lineItems, data?.lines, data?.products, data?.invoiceItems];
+    for (const c of candidates) {
+      if (Array.isArray(c) && c.length > 0) return c;
+    }
+    return [];
+  }
+
+  function getTotal(data) {
+    const candidates = [data?.total, data?.grandTotal, data?.amount, data?.invoiceTotal, data?.subtotal];
+    for (const c of candidates) {
+      if (c !== undefined && c !== null && !isNaN(parseFloat(c))) {
+        return parseFloat(c);
+      }
+    }
+    return null;
+  }
+
+  // ---------- Build WhatsApp message ----------
+  function buildMessage(data, invoiceUrl) {
+    const name = getName(data);
+    const ref = getReference(data);
+    const items = getItems(data);
+    const total = getTotal(data);
+
+    let msg = `Hello ${name},\n\n`;
+    msg += `📄 *Invoice #${ref}*\n\n`;
+
+    if (items.length > 0) {
+      msg += `*Items:*\n`;
+      const maxShow = 8;
+      const shown = items.slice(0, maxShow);
+      for (const item of shown) {
+        const desc = item.description || item.name || item.product || 'Item';
+        const qty = item.quantity || item.qty || 1;
+        const price = item.price || item.unitPrice || item.amount || 0;
+        const priceStr = typeof price === 'number' ? price.toFixed(2) : price;
+        msg += `  • ${desc}  x${qty}  $${priceStr}\n`;
+      }
+      if (items.length > maxShow) {
+        msg += `  … and ${items.length - maxShow} more item(s)\n`;
+      }
+      msg += '\n';
+    }
+
+    if (total !== null) {
+      const totalStr = typeof total === 'number' ? total.toFixed(2) : total;
+      msg += `💰 *Total:* $${totalStr}\n\n`;
+    }
+
+    msg += `🔗 View full invoice:\n${invoiceUrl}\n\n`;
+    msg += `Thank you,\n*Vals Tracking (Pvt) Ltd*`;
+
+    return msg;
+  }
+
+  // ---------- Main send function ----------
+  async function sendToWhatsApp() {
+    if (isLoading) return;
+
+    setLoading(true);
+    setStatus('⏳ Fetching invoice data…', 'info');
+
+    try {
+      const invoiceUrl = window.location.href;
+
+      let data;
+      try {
+        data = await fetchInvoiceData();
+        cachedData = data;
+      } catch (err) {
+        console.warn('Fetch error:', err);
+        // If we have cached data from previous successful fetch, use it
+        if (cachedData) {
+          data = cachedData;
+          setStatus('⚠️ Using cached data (API failed)', 'info');
+        } else {
+          throw new Error('Invoice data not available. Please refresh or check the page.');
+        }
+      }
+
+      const phone = getPhone(data);
+      if (!phone) {
+        setStatus('❌ No phone number found for this customer.', 'error');
+        setLoading(false);
+        return;
+      }
+
+      const cleanPhone = phone.replace(/[^0-9]/g, '');
+      if (cleanPhone.length < 7) {
+        setStatus('❌ Phone number seems invalid (min 7 digits).', 'error');
+        setLoading(false);
+        return;
+      }
+
+      const ref = getReference(data);
+      updateMeta(phone, ref);
+
+      const message = buildMessage(data, invoiceUrl);
+      const waUrl = `https://wa.me/${cleanPhone}?text=${encodeURIComponent(message)}`;
+      window.open(waUrl, '_blank');
+
+      setStatus(`✅ WhatsApp opened for ${getName(data)} (${cleanPhone})`, 'success');
+      setLoading(false);
+
+    } catch (err) {
+      console.error('Send error:', err);
+      setStatus(`❌ ${err.message || 'Something went wrong.'}`, 'error');
+      setLoading(false);
+    }
+  }
+
+  // ---------- Auto-load on page start ----------
+  async function autoLoad() {
+    try {
+      const data = await fetchInvoiceData();
+      cachedData = data;
+      const phone = getPhone(data);
+      const ref = getReference(data);
+      updateMeta(phone, ref);
+      setStatus('✅ Data loaded – ready to send', 'success');
+    } catch (err) {
+      console.warn('Auto-load failed:', err);
+      setStatus('ℹ️ Click "Send" to fetch invoice data automatically.', 'info');
+      // Still try to show something
+      const scraped = scrapeFromPage();
+      if (scraped.reference || scraped.phone) {
+        updateMeta(scraped.phone || '', scraped.reference || '');
+        setStatus('📄 Partial data from page (API unavailable)', 'info');
+      }
+    }
+    // Check connection
+    try {
+      const res = await fetch(window.location.origin, { method: 'HEAD', signal: AbortSignal.timeout(2000) });
+      if (res.ok || res.status < 500) {
+        connectionStatus.textContent = '✅ Connected to Manager.io';
+        statusDot.className = 'dot';
+      } else {
+        connectionStatus.textContent = '⚠️ Server unstable';
+        statusDot.className = 'dot inactive';
+      }
+    } catch (_) {
+      connectionStatus.textContent = '⚠️ No internet / Server unreachable';
+      statusDot.className = 'dot inactive';
+    }
+  }
+
+  // ---------- Events ----------
+  sendBtn.addEventListener('click', sendToWhatsApp);
+
+  // Keyboard shortcut: Ctrl+Enter (or Cmd+Enter on Mac)
+  document.addEventListener('keydown', (e) => {
+    if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+      e.preventDefault();
+      sendToWhatsApp();
+    }
+  });
+
+  // Run on load
+  autoLoad();
+
+})();
+</script>
 </body>
 </html>
