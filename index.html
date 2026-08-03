@@ -20,7 +20,7 @@
       border-radius: 20px;
       box-shadow: 0 12px 40px rgba(0,0,0,0.1);
       padding: 30px 32px 36px;
-      max-width: 520px;
+      max-width: 560px;
       width: 100%;
     }
     .card-header {
@@ -122,6 +122,30 @@
       margin-right: 4px;
     }
     .meta .dot.inactive { background: #cbd5e1; }
+    /* Debug panel */
+    #debugPanel {
+      margin-top: 16px;
+      padding: 12px;
+      background: #f8f9fa;
+      border-radius: 8px;
+      font-size: 13px;
+      color: #333;
+      border: 1px solid #e0e0e0;
+      display: none;
+      max-height: 200px;
+      overflow-y: auto;
+      white-space: pre-wrap;
+      word-break: break-all;
+    }
+    #debugPanel.show { display: block; }
+    .debug-toggle {
+      margin-top: 12px;
+      text-align: right;
+      font-size: 12px;
+      color: #7a8a9e;
+      cursor: pointer;
+      text-decoration: underline;
+    }
     @media (max-width: 480px) {
       .card { padding: 24px 20px 28px; }
       .card-header h2 { font-size: 19px; }
@@ -152,6 +176,10 @@
     <span><span class="dot" id="statusDot"></span><span id="connectionStatus">Checking page…</span></span>
     <span id="invoiceRef">Invoice: —</span>
   </div>
+
+  <!-- Debug Toggle & Panel -->
+  <div class="debug-toggle" id="debugToggle">🔍 Show detected data</div>
+  <div id="debugPanel"></div>
 </div>
 
 <script>
@@ -165,10 +193,14 @@
   const statusDot = document.getElementById('statusDot');
   const connectionStatus = document.getElementById('connectionStatus');
   const invoiceRefEl = document.getElementById('invoiceRef');
+  const debugPanel = document.getElementById('debugPanel');
+  const debugToggle = document.getElementById('debugToggle');
 
   let isLoading = false;
   let extractedData = null;
+  let lastDebugInfo = '';
 
+  // Helper: set status
   function setStatus(msg, type) {
     statusText.textContent = msg;
     statusEl.className = 'status';
@@ -197,105 +229,233 @@
     invoiceRefEl.textContent = reference ? `Invoice: #${reference}` : 'Invoice: —';
   }
 
-  // ---------- SMART PAGE SCANNER (improved) ----------
+  // Show debug info
+  function showDebug(info) {
+    lastDebugInfo = info;
+    if (debugPanel.classList.contains('show')) {
+      debugPanel.textContent = info;
+    }
+  }
+
+  debugToggle.addEventListener('click', function() {
+    debugPanel.classList.toggle('show');
+    if (debugPanel.classList.contains('show')) {
+      debugPanel.textContent = lastDebugInfo || 'No debug info yet. Click "Send" to scan.';
+    }
+  });
+
+  // ---------- POWERFUL PAGE SCANNER ----------
   function scanPageForInvoiceData() {
     const data = {};
+    let debugLines = [];
 
-    // Get all text from the page as lines
+    // Get full page text
     const bodyText = document.body.innerText || '';
     const lines = bodyText.split('\n').map(s => s.trim()).filter(Boolean);
 
-    // Helper: find a value after a label (case-insensitive)
-    function findValueAfterLabel(labels, lines, maxLines = 3) {
+    debugLines.push('=== Page scan started ===');
+    debugLines.push(`Total text lines: ${lines.length}`);
+
+    // ---------- 1. Find phone number ----------
+    let phone = null;
+    let phoneContext = '';
+
+    // Try to find elements with phone-related selectors first
+    const phoneSelectors = [
+      '[data-testid="customer-phone"]',
+      '.phone',
+      '.mobile',
+      '.contact-phone',
+      '[class*="phone"]',
+      '[class*="mobile"]',
+      '[class*="contact"]',
+      'input[name*="phone"]',
+      'input[name*="mobile"]'
+    ];
+    for (const sel of phoneSelectors) {
+      const el = document.querySelector(sel);
+      if (el) {
+        const text = el.textContent.trim() || el.value || '';
+        if (text && /\d/.test(text)) {
+          phone = text;
+          phoneContext = `Selector: ${sel} → "${text}"`;
+          debugLines.push(`Found via selector: ${phoneContext}`);
+          break;
+        }
+      }
+    }
+
+    // If not found by selector, scan text
+    if (!phone) {
+      // 1. Look for labels that indicate phone
+      const phoneLabels = ['primary contact #', 'primary contact', 'contact #', 'contact number', 'phone #', 'mobile #', 'cell #', 'phone', 'mobile', 'cell'];
+      let phoneLineIndex = -1;
       for (let i = 0; i < lines.length; i++) {
-        const line = lines[i];
-        const lower = line.toLowerCase();
-        for (const label of labels) {
-          if (lower.includes(label.toLowerCase())) {
-            // Check if the same line contains a colon or separator
-            const parts = line.split(/[:#]\s*/);
-            if (parts.length > 1) {
-              const candidate = parts.slice(1).join(' ').trim();
-              if (candidate) return candidate;
+        const line = lines[i].toLowerCase();
+        for (const label of phoneLabels) {
+          if (line.includes(label)) {
+            phoneLineIndex = i;
+            break;
+          }
+        }
+        if (phoneLineIndex !== -1) break;
+      }
+
+      if (phoneLineIndex !== -1) {
+        // Look at this line and the next two lines for a number
+        for (let offset = 0; offset <= 2; offset++) {
+          const idx = phoneLineIndex + offset;
+          if (idx < lines.length) {
+            const candidate = lines[idx];
+            // Extract any phone-like pattern
+            const numbers = candidate.match(/([\+\d\s\-\(\)]{7,})/g);
+            if (numbers) {
+              phone = numbers[0].trim();
+              phoneContext = `Line #${phoneLineIndex+1} (label): "${candidate}" → found "${phone}"`;
+              debugLines.push(`Found via label: ${phoneContext}`);
+              break;
             }
-            // Otherwise look at next lines
-            for (let j = 1; j <= maxLines; j++) {
-              const nextLine = lines[i + j] || '';
-              if (nextLine && nextLine.length > 1) {
-                // If next line is not just numbers, it might be a name
-                return nextLine.trim();
+          }
+        }
+        // If still not found, take the next line that contains digits
+        if (!phone) {
+          for (let offset = 1; offset <= 3; offset++) {
+            const idx = phoneLineIndex + offset;
+            if (idx < lines.length) {
+              const candidate = lines[idx];
+              if (/\d/.test(candidate) && candidate.length > 4) {
+                phone = candidate.trim();
+                phoneContext = `Line after label: "${phone}"`;
+                debugLines.push(`Found via line after label: ${phoneContext}`);
+                break;
               }
             }
           }
         }
       }
-      return null;
-    }
 
-    // 1. Phone number: look for labels like "Primary Contact #", "Contact #", "Phone", "Mobile", "Cell"
-    let phone = null;
-    const phoneLabels = ['primary contact #', 'primary contact', 'contact #', 'contact number', 'phone #', 'mobile #', 'cell #', 'phone', 'mobile', 'cell'];
-    const phoneValue = findValueAfterLabel(phoneLabels, lines);
-    if (phoneValue) {
-      // Extract any number sequence from it (digits, spaces, dashes, plus)
-      const phoneMatch = phoneValue.match(/([\+\d\s\-\(\)]{7,})/);
-      if (phoneMatch) phone = phoneMatch[1].trim();
-    }
-
-    // If still not found, scan all lines with a generic phone regex
-    if (!phone) {
-      const phoneRegex = /(\+?\d{1,3}[\s\-]?)?\(?\d{3}\)?[\s\-]?\d{3}[\s\-]?\d{4,}/g;
-      for (const line of lines) {
-        const match = line.match(phoneRegex);
-        if (match) {
-          phone = match[0].trim();
-          break;
+      // If still no phone, scan all lines for a phone pattern
+      if (!phone) {
+        const phoneRegex = /(\+?\d{1,4}[\s\-]?)?(\(?\d{3}\)?[\s\-]?)?\d{3}[\s\-]?\d{4,}/g;
+        const allMatches = [];
+        for (const line of lines) {
+          let match;
+          while ((match = phoneRegex.exec(line)) !== null) {
+            allMatches.push({ number: match[0].trim(), line: line });
+          }
+        }
+        // If multiple, pick the one that looks like a Pakistani number (starts with 03) or the longest
+        if (allMatches.length > 0) {
+          // Prefer numbers with 10-11 digits
+          let best = null;
+          let bestScore = 0;
+          for (const m of allMatches) {
+            const clean = m.number.replace(/\D/g, '');
+            let score = clean.length;
+            if (/^03\d{9}$/.test(clean)) score += 100; // Pakistani format
+            if (clean.length >= 10) score += 50;
+            if (score > bestScore) {
+              bestScore = score;
+              best = m;
+            }
+          }
+          if (best) {
+            phone = best.number;
+            phoneContext = `Regex match from line: "${best.line}" → "${phone}"`;
+            debugLines.push(`Found via regex: ${phoneContext}`);
+          }
         }
       }
     }
 
-    // If still no phone, try to find any number that looks like a Pakistani phone (starting with 03)
-    if (!phone) {
-      const pkRegex = /\b03\d{9}\b/;
-      for (const line of lines) {
-        const match = line.match(pkRegex);
-        if (match) {
-          phone = match[0];
-          break;
-        }
-      }
+    // Clean phone: remove spaces, dashes, parentheses, keep plus and digits
+    if (phone) {
+      // Keep only digits and plus sign
+      const cleaned = phone.replace(/[^\d\+]/g, '');
+      if (cleaned) phone = cleaned;
+      debugLines.push(`Cleaned phone: "${phone}"`);
+    } else {
+      debugLines.push('❌ No phone number found in page.');
     }
-
     data.phone = phone || '';
 
-    // 2. Customer Name: look for "Primary Contact Person", "Contact Person", "Customer", "Client"
+    // ---------- 2. Find customer name ----------
     let name = null;
     const nameLabels = ['primary contact person', 'contact person', 'customer name', 'client name', 'bill to', 'ship to', 'name'];
-    const nameValue = findValueAfterLabel(nameLabels, lines);
-    if (nameValue) {
-      // Clean up: remove "Mr.", "Ms." etc. if present, but we can keep them
-      name = nameValue.replace(/^(mr|ms|mrs|dr)\.?\s*/i, '').trim();
+    let nameLineIndex = -1;
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i].toLowerCase();
+      for (const label of nameLabels) {
+        if (line.includes(label)) {
+          nameLineIndex = i;
+          break;
+        }
+      }
+      if (nameLineIndex !== -1) break;
     }
 
+    if (nameLineIndex !== -1) {
+      // Look at this line and the next line for a name (not containing many digits)
+      for (let offset = 0; offset <= 2; offset++) {
+        const idx = nameLineIndex + offset;
+        if (idx < lines.length) {
+          const candidate = lines[idx];
+          // Remove common prefixes like "Mr.", "Ms.", "Mrs."
+          const cleanName = candidate.replace(/^(mr|ms|mrs|dr)\.?\s*/i, '').trim();
+          if (cleanName && cleanName.length > 1 && !/^\d+$/.test(cleanName)) {
+            name = cleanName;
+            debugLines.push(`Found name via label: "${name}" (from line #${idx+1})`);
+            break;
+          }
+        }
+      }
+    }
+
+    // If no name found, try to take the line before the phone number if we found phone
+    if (!name && phone) {
+      const phoneIndex = lines.findIndex(line => line.includes(phone));
+      if (phoneIndex > 0) {
+        const prevLine = lines[phoneIndex - 1];
+        if (prevLine && !/\d/.test(prevLine) && prevLine.length > 2) {
+          name = prevLine.trim();
+          debugLines.push(`Inferred name from line before phone: "${name}"`);
+        }
+      }
+    }
+
+    // If still no name, take first line that looks like a proper name (2-4 words, no numbers)
     if (!name) {
-      // Fallback: take first line that looks like a name (2-4 words, no numbers)
       for (const line of lines) {
         const words = line.split(/\s+/);
         if (words.length >= 2 && words.length <= 5 && !/\d/.test(line) && line.length > 3) {
           name = line;
+          debugLines.push(`Fallback name: "${name}"`);
           break;
         }
       }
     }
     data.name = name || 'Valued Customer';
 
-    // 3. Invoice Number: look for "Invoice #", "Ref", "Number"
+    // ---------- 3. Invoice Number ----------
     let invoiceNumber = null;
     const invLabels = ['invoice #', 'invoice number', 'ref #', 'reference #', 'number #'];
-    const invValue = findValueAfterLabel(invLabels, lines);
-    if (invValue) {
-      const invMatch = invValue.match(/([A-Z0-9\-]+)/);
-      if (invMatch) invoiceNumber = invMatch[1];
+    let invLineIndex = -1;
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i].toLowerCase();
+      for (const label of invLabels) {
+        if (line.includes(label)) {
+          invLineIndex = i;
+          break;
+        }
+      }
+      if (invLineIndex !== -1) break;
+    }
+
+    if (invLineIndex !== -1) {
+      const candidate = lines[invLineIndex];
+      const match = candidate.match(/([A-Z0-9\-]+)/);
+      if (match) invoiceNumber = match[1];
+      debugLines.push(`Found invoice via label: "${invoiceNumber}"`);
     }
 
     if (!invoiceNumber) {
@@ -310,6 +470,7 @@
           const match = line.match(pattern);
           if (match) {
             invoiceNumber = match[1].trim();
+            debugLines.push(`Found invoice via pattern: "${invoiceNumber}"`);
             break;
           }
         }
@@ -320,52 +481,71 @@
       const url = window.location.href;
       const pathMatch = url.match(/\/(\d{4,})/);
       if (pathMatch) invoiceNumber = pathMatch[1];
+      debugLines.push(`Invoice from URL: "${invoiceNumber}"`);
     }
     data.reference = invoiceNumber || 'N/A';
 
-    // 4. Total: look for "Total", "Grand Total", "Amount"
+    // ---------- 4. Total ----------
     let total = null;
     const totalLabels = ['grand total', 'total amount', 'total', 'amount due', 'balance due'];
-    const totalValue = findValueAfterLabel(totalLabels, lines);
-    if (totalValue) {
-      const totalMatch = totalValue.match(/[$€£]?\s*([\d,]+\.\d{2})/);
-      if (totalMatch) total = parseFloat(totalMatch[1].replace(/,/g, ''));
+    let totalLineIndex = -1;
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i].toLowerCase();
+      for (const label of totalLabels) {
+        if (line.includes(label)) {
+          totalLineIndex = i;
+          break;
+        }
+      }
+      if (totalLineIndex !== -1) break;
+    }
+
+    if (totalLineIndex !== -1) {
+      const candidate = lines[totalLineIndex];
+      const match = candidate.match(/[$€£]?\s*([\d,]+\.\d{2})/);
+      if (match) total = parseFloat(match[1].replace(/,/g, ''));
     }
     if (total === null) {
-      // Scan all text for currency pattern
       const currencyMatch = bodyText.match(/[$€£]\s*([\d,]+\.\d{2})/);
       if (currencyMatch) total = parseFloat(currencyMatch[1].replace(/,/g, ''));
     }
     data.total = total;
 
-    // 5. Items: try to get from tables
+    // ---------- 5. Items ----------
     const items = [];
     const tables = document.querySelectorAll('table');
     for (const table of tables) {
       const rows = table.querySelectorAll('tbody tr');
-      if (rows.length > 0) {
-        for (const row of rows) {
-          const cols = row.querySelectorAll('td');
-          if (cols.length >= 2) {
-            const desc = cols[0]?.textContent.trim() || '';
-            const qty = cols[1]?.textContent.trim() || '';
-            const price = cols[2]?.textContent.trim() || '';
-            if (desc && desc.length > 1) {
-              items.push({ description: desc, quantity: qty, price: price });
-            }
+      for (const row of rows) {
+        const cols = row.querySelectorAll('td');
+        if (cols.length >= 2) {
+          const desc = cols[0]?.textContent.trim() || '';
+          const qty = cols[1]?.textContent.trim() || '';
+          const price = cols[2]?.textContent.trim() || '';
+          if (desc && desc.length > 1) {
+            items.push({ description: desc, quantity: qty, price: price });
           }
         }
-        if (items.length > 0) break;
       }
+      if (items.length > 0) break;
     }
     data.items = items;
+
+    // Build debug info
+    debugLines.push('=== EXTRACTED DATA ===');
+    debugLines.push(`Phone: "${data.phone}"`);
+    debugLines.push(`Name: "${data.name}"`);
+    debugLines.push(`Invoice: "${data.reference}"`);
+    debugLines.push(`Total: ${data.total !== null ? data.total : 'not found'}`);
+    debugLines.push(`Items: ${data.items.length} items`);
+    const debugInfo = debugLines.join('\n');
+    showDebug(debugInfo);
 
     return data;
   }
 
   // ---------- Try API first, fallback to scanner ----------
   async function fetchInvoiceData() {
-    // First, try the API (multiple endpoints)
     const url = window.location.href;
     const urlObj = new URL(url);
     const search = urlObj.search;
@@ -543,7 +723,7 @@
     if (isLoading) return;
 
     setLoading(true);
-    setStatus('⏳ Fetching invoice data…', 'info');
+    setStatus('⏳ Scanning page for data…', 'info');
 
     try {
       const invoiceUrl = window.location.href;
